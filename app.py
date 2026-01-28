@@ -298,6 +298,22 @@ def add_ids_rule():
     rule_id = ids.add_rule(data)
     return jsonify({'rule_id': rule_id, 'status': 'added'})
 
+@app.route('/api/blue/ids/rules/<rule_id>/toggle', methods=['POST'])
+def toggle_ids_rule(rule_id):
+    """Enable/disable an IDS rule"""
+    enabled = ids.toggle_rule(rule_id)
+    if enabled is None:
+        return jsonify({'error': 'Rule not found'}), 404
+    # Audit log
+    log_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'type': 'system',
+        'source': 'ids',
+        'message': f'IDS rule {rule_id} toggled to {"enabled" if enabled else "disabled"}'
+    }
+    system_logs.append(log_entry)
+    return jsonify({'status': 'toggled', 'enabled': enabled})
+
 @app.route('/api/blue/ids/rules/<rule_id>', methods=['DELETE'])
 def delete_ids_rule(rule_id):
     """Delete IDS rule"""
@@ -328,7 +344,35 @@ def block_ip():
     data = request.json
     ip = data.get('ip')
     firewall.block_ip(ip)
+    # Audit log
+    log_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'type': 'system',
+        'source': 'firewall',
+        'message': f'IP blocked: {ip}'
+    }
+    system_logs.append(log_entry)
     return jsonify({'status': 'blocked'})
+
+@app.route('/api/blue/firewall/unblock', methods=['POST'])
+def unblock_ip():
+    """Unblock an IP address"""
+    data = request.json
+    ip = data.get('ip')
+    firewall.unblock_ip(ip)
+    log_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'type': 'system',
+        'source': 'firewall',
+        'message': f'IP unblocked: {ip}'
+    }
+    system_logs.append(log_entry)
+    return jsonify({'status': 'unblocked'})
+
+@app.route('/api/blue/firewall/blocked', methods=['GET'])
+def get_blocked_ips():
+    """Get blocked IPs"""
+    return jsonify(firewall.get_blocked_ips())
 
 # WebSocket events
 @socketio.on('connect', namespace='/red')

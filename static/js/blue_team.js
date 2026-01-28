@@ -19,11 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Setup event listeners
 function setupEventListeners() {
-    // Tab switching
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => switchTab(e.target.dataset.tab));
-    });
-    
     // IDS sensitivity
     const sensitivity = document.getElementById('sensitivity');
     if (sensitivity) {
@@ -49,9 +44,7 @@ function setupEventListeners() {
     document.getElementById('logSeverityFilter')?.addEventListener('change', loadLogs);
     
     // Report generation
-    document.getElementById('generatePostureReport')?.addEventListener('click', () => generateReport('posture'));
-    document.getElementById('generateIncidentReport')?.addEventListener('click', () => generateReport('incident'));
-    document.getElementById('generateComplianceReport')?.addEventListener('click', () => generateReport('compliance'));
+    document.getElementById('generateAuditReport')?.addEventListener('click', generateAuditReport);
 }
 
 // Connect WebSocket
@@ -330,8 +323,12 @@ function displayIDSRules(rules) {
 
 // Toggle IDS rule
 async function toggleIDSRule(ruleId) {
-    // This would require a toggle endpoint
-    loadIDSRules();
+    try {
+        await fetch(`/api/blue/ids/rules/${ruleId}/toggle`, { method: 'POST' });
+        loadIDSRules();
+    } catch (error) {
+        console.error('Error toggling IDS rule:', error);
+    }
 }
 
 // Delete IDS rule
@@ -364,12 +361,13 @@ function addIDSRule() {
 // Load firewall rules
 async function loadFirewallRules() {
     try {
-        const response = await fetch('/api/blue/firewall/rules');
-        const rules = await response.json();
+        const [rulesRes, blockedRes] = await Promise.all([
+            fetch('/api/blue/firewall/rules'),
+            fetch('/api/blue/firewall/blocked')
+        ]);
+        const rules = await rulesRes.json();
+        const blockedIPs = await blockedRes.json();
         displayFirewallRules(rules);
-        
-        // Also load blocked IPs
-        const blockedIPs = rules.filter(r => r.action === 'block').map(r => r.source_ip);
         displayBlockedIPs(blockedIPs);
     } catch (error) {
         console.error('Error loading firewall rules:', error);
@@ -472,106 +470,126 @@ async function blockIP() {
 
 // Unblock IP
 async function unblockIP(ip) {
-    // This would require an unblock endpoint
-    alert(`Unblock functionality for ${ip} would be implemented here`);
+    try {
+        await fetch('/api/blue/firewall/unblock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip })
+        });
+        loadFirewallRules();
+    } catch (error) {
+        console.error('Error unblocking IP:', error);
+    }
 }
 
-// Setup charts
-function setupCharts() {
-    const ctx = document.getElementById('trafficChart');
-    if (!ctx) return;
-    
-    // Set fixed height for canvas
-    ctx.style.height = '300px';
-    ctx.style.maxHeight = '300px';
-    
-    trafficChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Packets/sec',
-                data: [],
-                borderColor: '#007bff',
-                backgroundColor: 'rgba(0, 123, 255, 0.1)',
-                tension: 0.4,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            aspectRatio: 2,
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top'
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    max: 100,
-                    ticks: {
-                        stepSize: 20
-                    }
-                },
-                x: {
-                    ticks: {
-                        maxRotation: 45,
-                        minRotation: 45
-                    }
-                }
-            },
-            animation: {
-                duration: 750
-            }
-        }
-    });
-    
-    // Update chart periodically
-    setInterval(() => {
-        if (trafficChart && ctx.parentElement) {
-            const now = new Date().toLocaleTimeString();
-            const value = Math.floor(Math.random() * 100);
-            
-            trafficChart.data.labels.push(now);
-            trafficChart.data.datasets[0].data.push(value);
-            
-            // Keep only last 15 data points to prevent growth
-            if (trafficChart.data.labels.length > 15) {
-                trafficChart.data.labels.shift();
-                trafficChart.data.datasets[0].data.shift();
-            }
-            
-            // Use update with mode to prevent full redraw
-            trafficChart.update('none');
-        }
-    }, 2000);
-}
+// Generate simple audit report (PDF via browser print)
+function generateAuditReport() {
+    const w = window.open('', '_blank');
+    if (!w) {
+        alert('Popup blocked. Please allow popups for report export.');
+        return;
+    }
 
-// Switch tabs
-function switchTab(tabName) {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        if (btn.dataset.tab === tabName) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
+    const now = new Date().toISOString();
+    const severityCounts = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+    alerts.forEach(a => {
+        if (severityCounts[a.severity] !== undefined) {
+            severityCounts[a.severity] += 1;
         }
     });
-    
-    document.querySelectorAll('.tab-content').forEach(content => {
-        if (content.id === `${tabName}Tab`) {
-            content.classList.add('active');
-        } else {
-            content.classList.remove('active');
-        }
-    });
-}
 
-// Generate report
-function generateReport(type) {
-    alert(`${type.charAt(0).toUpperCase() + type.slice(1)} report generation would be implemented here`);
+    const style = `
+        <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1, h2, h3 { color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th, td { border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; }
+            th { background: #f0f0f0; }
+            .section { margin-bottom: 25px; }
+            .small { font-size: 11px; color: #666; }
+            .bar-row { display: flex; align-items: center; margin: 4px 0; }
+            .bar-label { width: 80px; }
+            .bar { height: 10px; background: #007bff; margin-left: 8px; }
+        </style>
+    `;
+
+    let html = `<html><head><title>Blue Team Audit Report</title>${style}</head><body>`;
+    html += `<h1>Blue Team Audit Report</h1>`;
+    html += `<p class="small">Generated at: ${now}</p>`;
+
+    // Metrics summary
+    html += '<div class="section"><h2>Dashboard Summary</h2><table><tbody>';
+    const scoreEl = document.getElementById('securityScore');
+    const threatsEl = document.getElementById('activeThreats');
+    const alertsEl = document.getElementById('totalAlerts');
+    const blockedEl = document.getElementById('blockedAttacks');
+    html += `<tr><th>Security Score</th><td>${scoreEl ? scoreEl.textContent : '-'}</td></tr>`;
+    html += `<tr><th>Active Threats</th><td>${threatsEl ? threatsEl.textContent : '-'}</td></tr>`;
+    html += `<tr><th>Total Alerts</th><td>${alertsEl ? alertsEl.textContent : '-'}</td></tr>`;
+    html += `<tr><th>Blocked Attacks / IPs</th><td>${blockedEl ? blockedEl.textContent : '-'}</td></tr>`;
+    html += '</tbody></table></div>';
+
+    // "Chart" of alerts by severity (simple bar lengths)
+    html += '<div class="section"><h2>Alerts by Severity</h2>';
+    const maxCount = Math.max(1, ...Object.values(severityCounts));
+    Object.entries(severityCounts).forEach(([sev, count]) => {
+        const width = (count / maxCount) * 200;
+        html += `
+            <div class="bar-row">
+                <span class="bar-label">${sev}</span>
+                <span>${count}</span>
+                <div class="bar" style="width:${width}px;"></div>
+            </div>
+        `;
+    });
+    html += '</div>';
+
+    // Recent alerts table
+    html += '<div class="section"><h2>Recent Alerts</h2>';
+    html += '<table><thead><tr><th>Time</th><th>Severity</th><th>Rule</th><th>Source IP</th><th>Description</th></tr></thead><tbody>';
+    alerts.slice(0, 20).forEach(a => {
+        html += `<tr>
+            <td>${new Date(a.timestamp).toLocaleString()}</td>
+            <td>${a.severity}</td>
+            <td>${a.rule_name}</td>
+            <td>${a.source_ip}</td>
+            <td>${a.description}</td>
+        </tr>`;
+    });
+    html += '</tbody></table></div>';
+
+    // Firewall rules
+    html += '<div class="section"><h2>Firewall Rules</h2>';
+    html += '<table><thead><tr><th>Name</th><th>Action</th><th>Source IP</th><th>Protocol</th><th>Port</th></tr></thead><tbody>';
+    const rulesContainer = document.getElementById('firewallRulesList');
+    if (rulesContainer) {
+        rulesContainer.querySelectorAll('.rule-info').forEach(info => {
+            const text = info.querySelector('p')?.textContent || '';
+            const name = info.querySelector('h4')?.textContent || '';
+            html += `<tr><td>${name}</td><td colspan="4">${text}</td></tr>`;
+        });
+    }
+    html += '</tbody></table></div>';
+
+    // Logs snapshot
+    html += '<div class="section"><h2>Recent Logs</h2>';
+    html += '<table><thead><tr><th>Time</th><th>Type</th><th>Message</th></tr></thead><tbody>';
+    logs.slice(0, 50).forEach(l => {
+        html += `<tr>
+            <td>${new Date(l.timestamp).toLocaleString()}</td>
+            <td>${l.type || 'system'}</td>
+            <td>${l.message}</td>
+        </tr>`;
+    });
+    html += '</tbody></table></div>';
+
+    html += '</body></html>';
+
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
 }
 
 // Update dashboard
