@@ -1,10 +1,11 @@
 """
-Port Scanner Attack Module
-Performs REAL port scanning with accurate results
+Port Scanner Attack Module - FIXED
+Performs REAL port scanning with accurate results and better progress reporting
 """
 import socket
 import time
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class PortScannerAttack:
     def __init__(self, target, parameters):
@@ -23,6 +24,10 @@ class PortScannerAttack:
             self.target_ip = self.target.replace('http://', '').replace('https://', '').split('/')[0].split(':')[0]
         else:
             self.target_ip = self.target
+        
+        # Resolve localhost to 127.0.0.1
+        if self.target_ip.lower() == 'localhost':
+            self.target_ip = '127.0.0.1'
         
         self.scan_type = parameters.get('scan_type', 'tcp')
         self.aborted = False
@@ -45,7 +50,7 @@ class PortScannerAttack:
         }
     
     def execute(self):
-        """Execute port scan"""
+        """Execute port scan with improved performance"""
         start_port, end_port = self.port_range
         
         yield {
@@ -67,59 +72,73 @@ class PortScannerAttack:
         ports_to_scan = list(range(start_port, min(end_port + 1, start_port + 200)))
         total_ports = len(ports_to_scan)
         
-        for i, port in enumerate(ports_to_scan):
-            if self.aborted:
-                yield {'message': 'Scan aborted', 'status': 'aborted'}
-                break
+        # Use threading for faster scanning
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            # Submit all port scans
+            future_to_port = {
+                executor.submit(self._scan_port_with_banner, self.target_ip, port): port 
+                for port in ports_to_scan
+            }
             
-            self.results['total_scanned'] += 1
+            scanned_count = 0
             
-            # Perform REAL port scan
-            port_status, banner = self._scan_port_with_banner(self.target_ip, port)
-            
-            if port_status == 'open':
-                service = self.common_services.get(port, 'Unknown')
+            for future in as_completed(future_to_port):
+                if self.aborted:
+                    yield {'message': 'Scan aborted', 'status': 'aborted'}
+                    break
                 
-                # Use banner info if available
-                if banner:
-                    service = f"{service} - {banner[:40]}"
+                port = future_to_port[future]
+                scanned_count += 1
+                self.results['total_scanned'] = scanned_count
                 
-                port_info = {
-                    'port': port,
-                    'status': 'open',
-                    'service': service,
-                    'banner': banner,
-                    'protocol': self.scan_type.upper(),
-                    'timestamp': datetime.now().isoformat()
-                }
-                self.results['open_ports'].append(port_info)
-                self.results['services_detected'].append(service)
+                try:
+                    port_status, banner = future.result()
+                    
+                    if port_status == 'open':
+                        service = self.common_services.get(port, 'Unknown')
+                        
+                        # Use banner info if available
+                        if banner:
+                            service = f"{service} - {banner[:40]}"
+                        
+                        port_info = {
+                            'port': port,
+                            'status': 'open',
+                            'service': service,
+                            'banner': banner,
+                            'protocol': self.scan_type.upper(),
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        self.results['open_ports'].append(port_info)
+                        self.results['services_detected'].append(service)
+                        
+                        yield {
+                            'message': f'🔓 OPEN: Port {port} ({service})',
+                            'progress': 5 + int(scanned_count / total_ports * 90),
+                            'status': 'port_found',
+                            'port': port_info,
+                            'ports_scanned': scanned_count
+                        }
+                        
+                    elif port_status == 'closed':
+                        self.results['closed_ports'].append(port)
+                        
+                    elif port_status == 'filtered':
+                        self.results['filtered_ports'].append(port)
+                    
+                    # Periodic progress updates
+                    if scanned_count % 25 == 0:
+                        open_count = len(self.results['open_ports'])
+                        yield {
+                            'message': f'⏳ Scanning... {scanned_count}/{total_ports} ports checked | {open_count} open',
+                            'progress': 5 + int(scanned_count / total_ports * 90),
+                            'status': 'scanning',
+                            'ports_scanned': scanned_count
+                        }
                 
-                yield {
-                    'message': f'🔓 OPEN: Port {port} ({service})',
-                    'progress': 5 + int((i + 1) / total_ports * 90),
-                    'status': 'port_found',
-                    'port': port_info,
-                    'ports_scanned': i + 1
-                }
-                
-            elif port_status == 'closed':
-                self.results['closed_ports'].append(port)
-                
-            elif port_status == 'filtered':
-                self.results['filtered_ports'].append(port)
-                
-                # Report filtered ports occasionally
-                if len(self.results['filtered_ports']) % 10 == 0:
-                    yield {
-                        'message': f'🔒 Detected {len(self.results["filtered_ports"])} filtered ports (firewall active)',
-                        'progress': 5 + int((i + 1) / total_ports * 90),
-                        'status': 'filtered_detected',
-                        'ports_scanned': i + 1
-                    }
-            
-            # Small delay to avoid overwhelming target
-            time.sleep(0.02)
+                except Exception as e:
+                    # Port scan failed, mark as filtered
+                    self.results['filtered_ports'].append(port)
         
         # Generate summary
         open_count = len(self.results['open_ports'])
@@ -144,11 +163,11 @@ class PortScannerAttack:
         }
     
     def _scan_port_with_banner(self, target, port):
-        """Scan port and attempt to grab banner"""
+        """Scan port and attempt to grab banner - faster version"""
         try:
             # Create socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(0.5)
+            sock.settimeout(0.3)  # Reduced timeout for faster scanning
             
             # Try to connect
             result = sock.connect_ex((target, port))
@@ -157,7 +176,7 @@ class PortScannerAttack:
                 # Port is open, try to grab banner
                 banner = None
                 try:
-                    sock.settimeout(1)
+                    sock.settimeout(0.5)
                     
                     # Send probe for common services
                     if port in [21, 22, 25, 110]:  # Services that send banner

