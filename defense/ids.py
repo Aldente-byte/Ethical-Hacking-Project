@@ -12,7 +12,7 @@ class IntrusionDetectionSystem:
             {
                 'id': 'rule_001',
                 'name': 'SQL Injection Detection',
-                'pattern': r"('|(OR|AND)\s+\d+\s*=\s*\d+|UNION\s+SELECT|--|#|/\*|\*/)",
+                'pattern': r"('|(OR|AND)\s+\d+\s*=\s*\d+|UNION\s+SELECT|--|#|/\*|\*/|payload|vulnerability)",
                 'severity': 'High',
                 'enabled': True,
                 'description': 'Detects SQL injection attempts'
@@ -20,7 +20,7 @@ class IntrusionDetectionSystem:
             {
                 'id': 'rule_002',
                 'name': 'Brute Force Detection',
-                'pattern': r'(failed.*login|authentication.*failed|invalid.*credentials)',
+                'pattern': r'(failed.*login|authentication.*failed|invalid.*credentials|attempting|password|login)',
                 'severity': 'Medium',
                 'enabled': True,
                 'description': 'Detects multiple failed login attempts'
@@ -28,7 +28,7 @@ class IntrusionDetectionSystem:
             {
                 'id': 'rule_003',
                 'name': 'Port Scan Detection',
-                'pattern': r'(port.*scan|scanning.*ports|reconnaissance)',
+                'pattern': r'(port.*scan|scanning.*ports|reconnaissance|port\s+\d+|open.*port)',
                 'severity': 'Low',
                 'enabled': True,
                 'description': 'Detects port scanning activities'
@@ -36,7 +36,7 @@ class IntrusionDetectionSystem:
             {
                 'id': 'rule_004',
                 'name': 'DDoS Detection',
-                'pattern': r'(flooding|ddos|denial.*service|high.*traffic)',
+                'pattern': r'(flooding|ddos|denial.*service|high.*traffic|request)',
                 'severity': 'Critical',
                 'enabled': True,
                 'description': 'Detects denial of service attacks'
@@ -51,6 +51,7 @@ class IntrusionDetectionSystem:
             }
         ]
         self.detection_count = 0
+        
     
     def detect_attack(self, attack_update, attack_id):
         """Detect if an attack update matches any IDS rules"""
@@ -69,8 +70,8 @@ class IntrusionDetectionSystem:
         
         return False
     
-    def generate_alert(self, attack_update, attack_id):
-        """Generate a security alert"""
+    def generate_alert(self, attack_update, attack_id, source_ip=None):
+        """Generate a security alert - FIXED to accept source_ip"""
         # Find matching rule
         message = str(attack_update.get('message', '')).lower()
         matched_rule = None
@@ -89,18 +90,24 @@ class IntrusionDetectionSystem:
                 'description': 'Suspicious activity detected'
             }
         
+        # FIXED: Use provided source_ip or extract from attack_update
+        if source_ip is None:
+            source_ip = attack_update.get('source_ip', attack_update.get('attacker_ip', 'Unknown'))
+        
         alert = {
             'id': str(uuid.uuid4()),
             'timestamp': datetime.now().isoformat(),
             'severity': matched_rule['severity'],
             'rule_name': matched_rule['name'],
             'description': matched_rule['description'],
-            'source_ip': attack_update.get('target', 'Unknown'),
+            'source_ip': source_ip,  # FIXED: Actual attacker IP
+            'dest_ip': attack_update.get('target', 'Unknown'),  # FIXED: Added destination
             'attack_id': attack_id,
             'message': attack_update.get('message', ''),
             'status': 'active',
             'blocked': False,
-            'acknowledged': False
+            'acknowledged': False,
+            'source': 'ids'  # FIXED: Tag for filtering
         }
         
         return alert

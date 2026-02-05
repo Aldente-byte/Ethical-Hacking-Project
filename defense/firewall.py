@@ -29,6 +29,13 @@ class Firewall:
                 'created': datetime.now().isoformat()
             }
         ]
+        # FIXED: Store blocked IPs with metadata
+        self.blocked_ips_data = {
+            '192.168.1.100': {
+                'timestamp': datetime.now().isoformat(),
+                'reason': 'Known malicious IP'
+            }
+        }
         self.blocked_ips = set(['192.168.1.100'])
         self.stats = {
             'packets_blocked': 0,
@@ -76,9 +83,15 @@ class Firewall:
         self.stats['packets_allowed'] += 1
         return True
     
-    def block_ip(self, ip):
+    def block_ip(self, ip, reason='Security threat'):
         """Block an IP address"""
         self.blocked_ips.add(ip)
+        
+        # FIXED: Store metadata
+        self.blocked_ips_data[ip] = {
+            'timestamp': datetime.now().isoformat(),
+            'reason': reason
+        }
         
         # Add rule if not exists
         rule_id = f"fw_block_{ip.replace('.', '_')}"
@@ -98,6 +111,11 @@ class Firewall:
     def unblock_ip(self, ip):
         """Unblock an IP address"""
         self.blocked_ips.discard(ip)
+        
+        # FIXED: Remove from metadata
+        if ip in self.blocked_ips_data:
+            del self.blocked_ips_data[ip]
+        
         # Remove blocking rules for this IP
         self.rules = [r for r in self.rules if not (r['source_ip'] == ip and r['action'] == 'block')]
     
@@ -113,8 +131,11 @@ class Firewall:
             'name': rule_data.get('name', 'Custom Rule'),
             'action': rule_data.get('action', 'block'),
             'source_ip': rule_data.get('source_ip', 'any'),
+            'dest_ip': rule_data.get('dest_ip', 'any'),  # FIXED: Added dest_ip
             'protocol': rule_data.get('protocol', 'all'),
             'port': rule_data.get('port', 'all'),
+            'source_port': rule_data.get('source_port', 'any'),  # FIXED: Added source_port
+            'dest_port': rule_data.get('dest_port', 'any'),  # FIXED: Added dest_port
             'enabled': rule_data.get('enabled', True),
             'created': datetime.now().isoformat()
         }
@@ -130,5 +151,13 @@ class Firewall:
         return self.stats
     
     def get_blocked_ips(self):
-        """Get list of blocked IPs"""
-        return list(self.blocked_ips)
+        """Get list of blocked IPs with metadata - FIXED"""
+        result = []
+        for ip in self.blocked_ips:
+            metadata = self.blocked_ips_data.get(ip, {})
+            result.append({
+                'ip': ip,
+                'timestamp': metadata.get('timestamp', datetime.now().isoformat()),
+                'reason': metadata.get('reason', 'Blocked by firewall')
+            })
+        return result

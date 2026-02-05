@@ -450,7 +450,52 @@ class SOCReportGenerator:
 
 
 # Helper function for Flask route
-def generate_soc_report(dashboard_data, alerts, logs, firewall_rules, blocked_ips, snort_stats=None):
-    """Generate and return PDF report"""
+def generate_soc_report(report_data):
+    """Generate and return PDF report - FIXED SIGNATURE"""
+    # Extract data from report_data dict
+    dashboard_data = {
+        'security_score': report_data.get('security_score', 100),
+        'system_status': report_data.get('system_status', 'operational'),
+        'active_threats': report_data.get('active_threats', 0),
+        'total_alerts': len(report_data.get('alerts', [])),
+        'snort_alerts': len(report_data.get('snort_alerts', [])),
+        'blocked_attacks': len(report_data.get('blocked_ips', []))
+    }
+    
+    # Combine IDS and Snort alerts
+    all_alerts = report_data.get('alerts', []) + report_data.get('snort_alerts', [])
+    
+    # Get Snort stats
+    snort_stats = None
+    if report_data.get('snort_alerts'):
+        snort_stats = {
+            'total_alerts': len(report_data.get('snort_alerts', [])),
+            'is_running': True
+        }
+    
     generator = SOCReportGenerator()
-    return generator.generate_report(dashboard_data, alerts, logs, firewall_rules, blocked_ips, snort_stats)
+    pdf_buffer = generator.generate_report(
+        dashboard_data=dashboard_data,
+        alerts=all_alerts,
+        logs=report_data.get('logs', []),
+        firewall_rules=report_data.get('firewall_rules', []),
+        blocked_ips=report_data.get('blocked_ips', []),
+        snort_stats=snort_stats
+    )
+    
+    # Save to file
+    import os
+    import tempfile
+    
+    # Create reports directory
+    os.makedirs('reports', exist_ok=True)
+    
+    # Generate filename
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'reports/soc_audit_{timestamp}.pdf'
+    
+    # Write to file
+    with open(filename, 'wb') as f:
+        f.write(pdf_buffer.getvalue())
+    
+    return filename
