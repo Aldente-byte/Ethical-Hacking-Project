@@ -294,17 +294,33 @@ function addTerminalLine(message, type = 'info') {
     terminal.scrollTop = terminal.scrollHeight;
 }
 
-// Display vulnerability
 function displayVulnerability(vuln) {
     const list = document.getElementById('vulnerabilitiesList');
     const item = document.createElement('div');
     item.className = 'result-card';
-    item.innerHTML = `
-        <h4>${vuln.type}</h4>
-        <p><strong>Parameter:</strong> ${vuln.parameter}</p>
-        <p><strong>Severity:</strong> ${vuln.severity}</p>
-        <p><strong>Payload:</strong> <code>${vuln.payload}</code></p>
-    `;
+    
+    // PORT SCANNER: Format spécial pour les ports ouverts
+    if (vuln.type === 'Open Port') {
+        item.innerHTML = `
+            <h4>🔓 ${vuln.type}</h4>
+            <p><strong>Port:</strong> ${vuln.port}</p>
+            <p><strong>Service:</strong> ${vuln.service}</p>
+            <p><strong>Severity:</strong> <span class="badge badge-${vuln.severity.toLowerCase()}">${vuln.severity}</span></p>
+            <p><strong>Description:</strong> ${vuln.description}</p>
+            <p><strong>Recommendation:</strong> ${vuln.recommendation}</p>
+        `;
+    } 
+    // SQL INJECTION / AUTRES: Format original
+    else {
+        item.innerHTML = `
+            <h4>${vuln.type}</h4>
+            <p><strong>Parameter:</strong> ${vuln.parameter || 'N/A'}</p>
+            <p><strong>Severity:</strong> <span class="badge badge-${(vuln.severity || 'medium').toLowerCase()}">${vuln.severity || 'Unknown'}</span></p>
+            ${vuln.payload ? `<p><strong>Payload:</strong> <code>${vuln.payload}</code></p>` : ''}
+            ${vuln.description ? `<p><strong>Description:</strong> ${vuln.description}</p>` : ''}
+        `;
+    }
+    
     list.appendChild(item);
 }
 

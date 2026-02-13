@@ -16,6 +16,8 @@ class SnortMonitor:
         self.running = False
         self.monitor_thread = None
         self.alerts = []
+        self.last_alert_time = None  # Track when last alert was received
+        self.last_heartbeat_time = None  # Track when forwarder last checked in
         self.stats = {
             'total_alerts': 0,
             'alerts_by_type': defaultdict(int),
@@ -176,6 +178,7 @@ class SnortMonitor:
         self.stats['total_alerts'] += 1
         self.stats['alerts_by_type'][attack_type] += 1
         self.stats['alerts_by_severity'][severity] += 1
+        self.last_alert_time = time.time()  # Update last activity time
         
         # Log to console
         print(f"[SnortMonitor] ALERT: {message} | {src_ip}:{src_port} -> {dst_ip}:{dst_port} | Type: {attack_type}")
@@ -224,12 +227,22 @@ class SnortMonitor:
     
     def get_stats(self):
         """Get monitoring statistics"""
+        # Consider Snort "running" if either:
+        # 1. Local monitoring thread is active (self.running), OR
+        # 2. We've received a heartbeat from forwarder in the last 30 seconds
+        is_active = self.running
+        
+        if not is_active and self.last_heartbeat_time:
+            # Check if last heartbeat was within 30 seconds
+            time_since_heartbeat = time.time() - self.last_heartbeat_time
+            is_active = time_since_heartbeat < 30  # 30 seconds timeout
+        
         return {
             'total_alerts': self.stats['total_alerts'],
             'alerts_by_type': dict(self.stats['alerts_by_type']),
             'alerts_by_severity': dict(self.stats['alerts_by_severity']),
             'blocked_ips_count': len(self.stats['blocked_ips']),
-            'is_running': self.running,
+            'is_running': is_active,
             'alert_file': self.alert_file,
             'file_exists': os.path.exists(self.alert_file)
         }
@@ -267,6 +280,10 @@ class SnortMonitor:
         self.stats['alerts_by_type'] = defaultdict(int)
         self.stats['alerts_by_severity'] = defaultdict(int)
         print("[SnortMonitor] Alerts cleared")
+    
+    def update_heartbeat(self):
+        """Update heartbeat timestamp - called when forwarder checks in"""
+        self.last_heartbeat_time = time.time()
     
     def test_parsing(self, sample_line):
         """Test alert parsing with a sample line"""

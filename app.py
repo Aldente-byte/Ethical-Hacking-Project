@@ -1,3 +1,4 @@
+from unittest import result
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 import json
@@ -232,10 +233,21 @@ def run_attack(attack_id, attack, target, attack_type, attacker_ip):
         # Attack completed
         active_attacks[attack_id]['status'] = 'completed'
         active_attacks[attack_id]['end_time'] = datetime.now().isoformat()
-        active_attacks[attack_id]['results'] = attack.get_results()
-        
-        # Add to history
-        attack_history.append({
+
+        # Get complete attack results
+        attack_results = attack.get_results()
+        active_attacks[attack_id]['result'] = attack_results  # ✅ FIXED: 'result' not 'results'
+
+        # DEBUG: Print results to console
+        print(f"\n{'='*60}")
+        print(f"[DEBUG] Attack {attack_id} COMPLETED")
+        print(f"[DEBUG] Attack type: {attack_type}")
+        print(f"[DEBUG] Vulnerabilities: {len(attack_results.get('vulnerabilities_found', []))}")
+        print(f"[DEBUG] Data extracted: {len(attack_results.get('data_extracted', []))}")
+        print(f"{'='*60}\n")
+
+        # Add to history - CRITICAL FIX: Use 'result' not 'results'
+        attack_record = {
             'id': attack_id,
             'type': attack_type,
             'target': target,
@@ -243,8 +255,25 @@ def run_attack(attack_id, attack, target, attack_type, attacker_ip):
             'start_time': active_attacks[attack_id]['start_time'],
             'end_time': active_attacks[attack_id]['end_time'],
             'status': 'completed',
-            'results': attack.get_results()
-        })
+            'result': attack_results  # ✅ FIXED: 'result' singular
+        }
+        attack_history.append(attack_record)
+
+        # Emit completion to Red Team Dashboard
+        socketio.emit('attack_complete', {
+            'attack_id': attack_id,
+            'result': attack_results
+        }, namespace='/red')
+
+        # Update security score
+        global security_score
+        result = attack.get_results()
+        if result.get('success', False) or result.get('vulnerabilities_found'):
+            security_score = max(0, security_score - 10)
+
+        socketio.emit('security_score_update', {
+            'score': security_score
+        }, namespace='/blue')
         
         # Correlate with Snort
         if snort_monitor:
@@ -601,6 +630,15 @@ def receive_snort_alert():
     try:
         data = request.get_json()
         alert_line = data.get('alert_line', '')
+        is_heartbeat = data.get('heartbeat', False)
+        
+        # Update heartbeat timestamp (whether it's an alert or just heartbeat ping)
+        if snort_monitor:
+            snort_monitor.update_heartbeat()
+        
+        # If it's just a heartbeat ping, return immediately
+        if is_heartbeat:
+            return jsonify({'status': 'heartbeat_received'}), 200
         
         print(f"[Snort API] Received alert from {request.remote_addr}: {alert_line[:100]}")
         
