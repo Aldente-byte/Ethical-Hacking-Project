@@ -1,348 +1,240 @@
-# Ethical Hacking Platform - Red Team vs Blue Team
+# 🛡️ Ethical Hacking Platform
 
-A comprehensive web application for simulating ethical hacking scenarios with separate Red Team (attack) and Blue Team (defense) interfaces.
+A comprehensive cybersecurity simulation platform featuring real network traffic generation, Snort IDS integration, and professional SOC operations with alert correlation.
 
-## 🎯 Project Overview
+![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
+![Flask](https://img.shields.io/badge/Flask-2.3-green)
+![Snort](https://img.shields.io/badge/Snort-3.0-orange)
+![License](https://img.shields.io/badge/License-Educational-red)
 
-This platform provides an educational environment for learning cybersecurity concepts through interactive simulation of both offensive (Red Team) and defensive (Blue Team) security operations.
+---
 
-## ✨ Features
+## 🎯 Overview
 
-### 🔴 Red Team Interface (Attack Simulation)
+An educational platform simulating real-world cybersecurity scenarios with separate Red Team (offensive) and Blue Team (defensive) interfaces. Features real network traffic generation, Snort IDS integration, and SOC-level alert correlation.
 
-1. **Attack Arsenal Section**
-   - 4 different attack types (SQL Injection, Brute Force, Port Scanner, DDoS)
-   - Quick launch buttons
-   - Attack status indicators
-   - Success/failure statistics
+### Key Features
 
-2. **Attack Configuration Panel**
-   - Target selection (IP, domain, service)
-   - Attack parameters (intensity, duration, payloads)
-   - Advanced options (custom scripts, wordlists)
-   - Scheduling attacks
+- **4 Attack Modules**: SQL Injection, Brute Force, Port Scanner, DDoS
+- **Multi-Layer Defense**: IDS, Snort 3, Firewall, Alert Correlator
+- **Real-Time Monitoring**: WebSocket-powered dashboards
+- **SOC Operations**: Alert correlation, incident management, automated response
+- **Real Traffic**: Actual HTTP requests and TCP packets, not simulated
+- **Professional Reports**: Automated PDF generation with ReportLab
 
-3. **Attack Execution View**
-   - Real-time terminal output
-   - Progress bars
-   - Live packet/request counters
-   - Abort/pause controls
+---
 
-4. **Results & Reporting**
-   - Vulnerability summary
-   - Exploited weaknesses
-   - Captured data (passwords, sessions, files)
-   - Export reports (PDF, JSON)
-   - Replay attack feature
+## 🏗️ Architecture
 
-5. **Attack History**
-   - Timeline of all attacks
-   - Filter by type, target, date
-   - Success rate analytics
-   - Comparison between attacks
+```
+Windows (Flask App)  →  Kali Linux (DVWA + Snort 3)
+    ↓                           ↓
+Red Team Interface      Snort detects attacks
+Blue Team Dashboard  ←  Alerts forwarded via HTTP
+```
 
-### 🔵 Blue Team Interface (Protection & Auditing)
+**Components:**
+- **Red Team**: Launches real attacks against DVWA
+- **Blue Team**: Monitors, detects, and responds to threats
+- **Snort IDS**: Network-level intrusion detection on Kali
+- **Alert Correlator**: Groups related alerts into incidents (SOC-level)
+- **Firewall**: IP blocking with immediate effect
 
-1. **Security Overview (Main Dashboard)**
-   - Security score/health meter
-   - Active threats counter
-   - System status indicators
-   - Quick stats (attacks blocked, alerts generated)
+---
 
-2. **Real-Time Monitoring**
-   - Live alert feed (scrolling list)
-   - Network traffic visualization
-   - Active connections map
-   - Suspicious activity indicators
-
-3. **Intrusion Detection System (IDS) Panel**
-   - Detection rules manager
-   - Enable/disable specific detectors
-   - Sensitivity configuration
-   - Whitelist/blacklist IPs
-   - Custom rule creation
-
-4. **Log Analysis Center**
-   - Searchable log viewer
-   - Filter by: severity, source IP, event type, time range
-   - Pattern recognition highlights
-   - Correlation engine (related events)
-   - Export logs
-
-5. **Alert Management**
-   - Alert queue (unacknowledged alerts)
-   - Severity classification (Critical → Low)
-   - Alert details (source, target, payload, timestamp)
-   - Acknowledge/dismiss/escalate actions
-   - Notes and incident tracking
-
-6. **Firewall Control Panel**
-   - Blocked IPs list
-   - Active rules
-   - Add/remove rules
-   - Traffic statistics by rule
-   - Auto-blocking based on IDS
-
-7. **Forensics & Investigation**
-   - Attack timeline reconstruction
-   - Packet capture viewer (PCAP analysis)
-   - Attack pattern analysis
-   - Attacker profiling
-   - Mitigation recommendations
-
-8. **Reports & Audit Logs**
-   - Security posture reports
-   - Compliance dashboards
-   - Incident reports
-   - Automated audit trail
-   - Export for compliance
-
-## 🚀 Installation
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- pip (Python package manager)
+- Python 3.8+
+- Kali Linux (for DVWA + Snort)
+- Docker (for DVWA)
 
-### Setup Steps
+### Installation
 
-1. **Clone or navigate to the project directory:**
-   ```bash
-   cd c:\Users\hp\Desktop\Projets\Python
-   ```
+**1. Windows (Flask App)**
+```bash
+pip install flask flask-socketio requests beautifulsoup4 reportlab
+python app.py
+```
+Access: `http://localhost:5000`
 
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+**2. Kali Linux (DVWA)**
+```bash
+docker run -d -p 80:80 vulnerables/web-dvwa
+```
+Access: `http://<kali-ip>/login.php` (admin/password)
 
-3. **Run the application:**
-   ```bash
-   python app.py
-   ```
+**3. Kali Linux (Snort)**
+```bash
+# Configure and start Snort
+sudo snort -c /etc/snort/snort.lua -i eth0 -A alert_fast -l /var/log/snort/
 
-4. **Access the application:**
-   - Open your web browser and navigate to: `http://localhost:5000`
-   - You'll see the main page with options to enter Red Team or Blue Team interfaces
+# Start alert forwarder
+python3 snort_forwarder.py
+```
+
+---
+
+## 🎮 Usage
+
+### Red Team
+1. Navigate to `/red-team`
+2. Select attack type (SQL Injection, Brute Force, Port Scanner, DDoS)
+3. Configure target and parameters
+4. Launch attack and monitor real-time progress
+
+### Blue Team
+1. Navigate to `/blue-team`
+2. Monitor security dashboard (score, active threats, alerts)
+3. Investigate incidents (correlated alerts from IDS + Snort)
+4. Respond to threats (acknowledge, block IP, close incident)
+5. Generate PDF reports
+
+---
+
+## 🔴 Attack Modules
+
+### SQL Injection
+Exploits DVWA SQL vulnerability with CSRF token handling. Extracts user data from MySQL database.
+
+### Brute Force
+Password cracking with wordlist. Handles CSRF tokens, detects successful authentication.
+
+### Port Scanner
+Multi-threaded TCP SYN scanning with banner grabbing and service identification.
+
+### DDoS
+HTTP flood simulation with baseline measurement and performance degradation tracking.
+
+---
+
+## 🔵 Defense Components
+
+### IDS (Intrusion Detection System)
+Application-level pattern matching with 5 detection rules (SQL, Brute Force, Port Scan, DDoS, Malicious Payloads).
+
+### Snort Monitor
+Integrates Snort 3 running on Kali. Parses alerts, maps SIDs to attack types, forwards to Flask via HTTP.
+
+### Alert Correlator
+SOC-level functionality. Groups related alerts into incidents based on attack type, source IP, and time window (120s). Reduces alert fatigue.
+
+### Firewall
+IP blacklisting with dynamic rule creation. Blocks attacks before and during execution.
+
+### Report Generator
+Automated PDF reports with executive summary, incidents, alerts, and recommendations.
+
+---
+
+## 📡 API Endpoints
+
+### Red Team
+- `GET /api/red/attacks` - List available attacks
+- `POST /api/red/launch` - Launch attack
+- `GET /api/red/history` - Attack history
+
+### Blue Team
+- `GET /api/blue/dashboard` - Dashboard metrics
+- `GET /api/blue/incidents` - Correlated incidents
+- `POST /api/blue/incidents/<id>/acknowledge` - Acknowledge incident
+- `POST /api/blue/incidents/<id>/block` - Block source IP
+- `POST /api/blue/firewall/block` - Manual IP blocking
+- `POST /api/snort-alert` - Receive Snort alerts (from Kali)
+
+---
 
 ## 📁 Project Structure
 
 ```
-Python/
-├── app.py                 # Main Flask application
-├── requirements.txt      # Python dependencies
-├── README.md             # This file
-├── attacks/              # Attack modules
-│   ├── __init__.py
-│   ├── sql_injection.py  # SQL Injection attack
-│   ├── brute_force.py    # Brute Force attack
-│   ├── port_scanner.py   # Port Scanner attack
-│   └── ddos.py           # DDoS attack
-├── defense/              # Defense modules
-│   ├── __init__.py
-│   ├── ids.py            # Intrusion Detection System
-│   ├── firewall.py       # Firewall module
-│   └── log_analyzer.py   # Log analysis module
-├── templates/            # HTML templates
-│   ├── index.html        # Main landing page
-│   ├── red_team.html     # Red Team interface
-│   └── blue_team.html    # Blue Team interface
-└── static/               # Static files
-    ├── css/
-    │   └── style.css     # Stylesheet
-    └── js/
-        ├── red_team.js   # Red Team JavaScript
-        └── blue_team.js  # Blue Team JavaScript
+├── app.py                      # Main Flask application
+├── attacks/                    # Red Team modules
+│   ├── sql_injection.py
+│   ├── brute_force.py
+│   ├── port_scanner.py
+│   └── ddos.py
+├── defense/                    # Blue Team modules
+│   ├── ids.py
+│   ├── snort_monitor.py
+│   ├── alert_correlator.py
+│   ├── firewall.py
+│   ├── log_analyzer.py
+│   └── report_generator.py
+├── templates/                  # HTML interfaces
+│   ├── index.html
+│   ├── red_team.html
+│   └── blue_team.html
+├── static/
+│   ├── css/style.css
+│   └── js/
+│       ├── red_team.js
+│       └── blue_team.js
+├── snort_forwarder.py         # Kali alert forwarder
+└── requirements.txt
 ```
-
-## 🎮 Usage Guide
-
-### Red Team Interface
-
-1. **Select an Attack:**
-   - Browse available attacks in the Attack Arsenal section
-   - Click on an attack card to select it
-
-2. **Configure Attack:**
-   - Enter target (IP address or domain)
-   - Configure attack parameters (intensity, duration, etc.)
-   - Customize payloads or wordlists if needed
-
-3. **Launch Attack:**
-   - Click "Launch Attack" button
-   - Monitor real-time progress in the Execution View
-   - View results in the Results & Reporting section
-
-4. **Review History:**
-   - Check Attack History for past attacks
-   - Filter by attack type or date
-   - Export reports as JSON
-
-### Blue Team Interface
-
-1. **Monitor Security:**
-   - Check Security Overview dashboard for system health
-   - Monitor real-time alerts in the Alert Feed
-   - Watch network traffic visualization
-
-2. **Manage IDS:**
-   - Configure detection rules
-   - Adjust sensitivity settings
-   - Enable/disable specific detectors
-
-3. **Analyze Logs:**
-   - Search and filter system logs
-   - Identify patterns and correlations
-   - Export log data
-
-4. **Handle Alerts:**
-   - Review alert queue
-   - Acknowledge or escalate alerts
-   - Block suspicious IPs automatically
-
-5. **Configure Firewall:**
-   - Add/remove firewall rules
-   - Block malicious IP addresses
-   - Monitor blocked traffic
-
-## 🔧 Attack Modules
-
-### 1. SQL Injection (`sql_injection.py`)
-- Simulates SQL injection attacks
-- Tests multiple payloads
-- Detects vulnerabilities
-- Extracts database information
-
-### 2. Brute Force (`brute_force.py`)
-- Attempts password cracking
-- Uses wordlist-based attacks
-- Tracks failed attempts
-- Detects account lockouts
-
-### 3. Port Scanner (`port_scanner.py`)
-- Scans target ports
-- Identifies open services
-- Detects filtered ports
-- Maps network services
-
-### 4. DDoS (`ddos.py`)
-- Simulates denial of service attacks
-- Configurable intensity levels
-- Multiple attack types (HTTP flood, TCP SYN, UDP)
-- Monitors target response times
-
-## 🛡️ Defense Modules
-
-### 1. Intrusion Detection System (`ids.py`)
-- Pattern-based detection
-- Custom rule creation
-- Real-time alert generation
-- Severity classification
-
-### 2. Firewall (`firewall.py`)
-- IP blocking
-- Rule-based filtering
-- Protocol and port control
-- Traffic statistics
-
-### 3. Log Analyzer (`log_analyzer.py`)
-- Log parsing and analysis
-- Event correlation
-- Pattern recognition
-- Search and filtering
-
-## 🔌 API Endpoints
-
-### Red Team Endpoints
-- `GET /api/red/attacks` - Get available attacks
-- `POST /api/red/launch` - Launch an attack
-- `GET /api/red/status/<attack_id>` - Get attack status
-- `GET /api/red/history` - Get attack history
-- `POST /api/red/abort/<attack_id>` - Abort an attack
-
-### Blue Team Endpoints
-- `GET /api/blue/dashboard` - Get dashboard data
-- `GET /api/blue/alerts` - Get security alerts
-- `POST /api/blue/alerts/<alert_id>/acknowledge` - Acknowledge alert
-- `GET /api/blue/logs` - Get system logs
-- `GET /api/blue/ids/rules` - Get IDS rules
-- `POST /api/blue/ids/rules` - Add IDS rule
-- `DELETE /api/blue/ids/rules/<rule_id>` - Delete IDS rule
-- `GET /api/blue/firewall/rules` - Get firewall rules
-- `POST /api/blue/firewall/rules` - Add firewall rule
-- `POST /api/blue/firewall/block` - Block IP address
-
-## 🌐 WebSocket Events
-
-### Red Team Events
-- `attack_update` - Real-time attack progress
-- `attack_complete` - Attack completion notification
-- `attack_detected` - Blue Team detection notification
-- `attack_error` - Attack error notification
-
-### Blue Team Events
-- `security_alert` - New security alert
-- `log_update` - New log entry
-
-## ⚠️ Important Notes
-
-- **Educational Purpose Only:** This platform is designed for learning and should only be used in authorized environments with proper permissions.
-
-- **No Real Attacks:** All attacks are simulated and do not cause actual harm to systems.
-
-- **Controlled Environment:** Use only in isolated lab environments or with explicit authorization.
-
-## 🎓 Learning Objectives
-
-This project demonstrates:
-- Web application security vulnerabilities
-- Attack simulation and penetration testing
-- Intrusion detection and prevention
-- Security operations center (SOC) workflows
-- Real-time monitoring and alerting
-- Log analysis and forensics
-- Firewall configuration and management
-
-## 📊 Project Requirements Met
-
-✅ **Red Team Side:**
-- Python code/notebook for attack simulation (15 points)
-- Web application with GUI for attack management (2 bonus points)
-- 4 different attack modules
-
-✅ **Blue Team Side:**
-- Web application with GUI for SOC operations (2-3 bonus points)
-- IDS system for attack analysis
-- Log analysis capabilities
-- Security alert generation
-
-## 🚀 Future Enhancements
-
-- Additional attack types
-- Machine learning-based detection
-- Advanced forensics tools
-- Multi-user support
-- Database persistence
-- Report generation (PDF)
-- PCAP file analysis
-- Network topology visualization
-
-## 👨‍💻 Development
-
-Built with:
-- **Backend:** Flask, Flask-SocketIO
-- **Frontend:** HTML5, CSS3, JavaScript
-- **Real-time:** WebSocket (Socket.IO)
-- **Charts:** Chart.js
-
-## 📝 License
-
-This project is for educational purposes only.
-
-## 🤝 Contributing
-
-This is an academic project. For improvements or suggestions, please contact the project maintainer.
 
 ---
 
-**Note:** Always ensure you have proper authorization before using any security testing tools, even in educational contexts.
+## 🔍 Snort Integration
+
+### Configuration
+- **Main config**: `/etc/snort/snort.lua`
+- **Custom rules**: `/etc/snort/rules/local.rules` (40+ rules)
+- **Alert format**: `alert_fast.txt` (one-line format)
+
+### Key Rules
+```snort
+# SQL Injection (SID 1000001)
+alert tcp any any -> any 80 (msg:"SQL Injection - OR 1=1"; content:"OR"; content:"1=1"; sid:1000001;)
+
+# Brute Force (SID 1000015)
+alert tcp any any -> any 80 (msg:"Brute Force - DVWA"; content:"/vulnerabilities/brute"; threshold:type threshold, track by_src, count 3, seconds 30; sid:1000015;)
+
+# Port Scan (SID 1000021)
+alert tcp any any -> $HOME_NET any (msg:"Port Scan"; flags:S; threshold:type threshold, track by_src, count 10, seconds 5; sid:1000021;)
+
+# DDoS (SID 1000031)
+alert tcp any any -> any 80 (msg:"DDoS - HTTP Flood"; content:"GET"; threshold:type threshold, track by_src, count 50, seconds 10; sid:1000031;)
+```
+
+---
+
+## 🎓 Educational Value
+
+**Demonstrates:**
+- Offensive security techniques (web exploitation, network attacks)
+- Defensive security operations (IDS, SOC workflows, incident response)
+- Real-time monitoring and alerting
+- Alert correlation and incident management
+- Multi-layer defense architecture
+- Python development (Flask, threading, WebSocket, regex)
+
+**Skills Developed:**
+- Web application security
+- Network intrusion detection
+- Security operations center (SOC) workflows
+- Incident response procedures
+- Python security tool development
+
+---
+
+## 🚀 Future Enhancements
+
+- Additional attack types (XSS, CSRF, File Upload)
+- Machine learning-based anomaly detection
+- PCAP file analysis and visualization
+- Database persistence (SQLite/PostgreSQL)
+- Multi-user support with role-based access
+- Integration with MITRE ATT&CK framework
+
+---
+
+## 📚 References
+
+- [DVWA Documentation](https://github.com/digininja/DVWA)
+- [Snort 3 Manual](https://www.snort.org/documents)
+- [Flask Documentation](https://flask.palletsprojects.com/)
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+
+---

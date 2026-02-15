@@ -29,7 +29,7 @@ class Firewall:
                 'created': datetime.now().isoformat()
             }
         ]
-        # FIXED: Store blocked IPs with metadata
+        # FIXED: Store blocked IPs
         self.blocked_ips_data = {
             '192.168.1.100': {
                 'timestamp': datetime.now().isoformat(),
@@ -87,7 +87,7 @@ class Firewall:
         """Block an IP address"""
         self.blocked_ips.add(ip)
         
-        # FIXED: Store metadata
+        # Store metadata
         self.blocked_ips_data[ip] = {
             'timestamp': datetime.now().isoformat(),
             'reason': reason
@@ -131,11 +131,11 @@ class Firewall:
             'name': rule_data.get('name', 'Custom Rule'),
             'action': rule_data.get('action', 'block'),
             'source_ip': rule_data.get('source_ip', 'any'),
-            'dest_ip': rule_data.get('dest_ip', 'any'),  # FIXED: Added dest_ip
+            'dest_ip': rule_data.get('dest_ip', 'any'),  # Added dest_ip
             'protocol': rule_data.get('protocol', 'all'),
             'port': rule_data.get('port', 'all'),
-            'source_port': rule_data.get('source_port', 'any'),  # FIXED: Added source_port
-            'dest_port': rule_data.get('dest_port', 'any'),  # FIXED: Added dest_port
+            'source_port': rule_data.get('source_port', 'any'),  #  Added source_port
+            'dest_port': rule_data.get('dest_port', 'any'),  #  Added dest_port
             'enabled': rule_data.get('enabled', True),
             'created': datetime.now().isoformat()
         }
